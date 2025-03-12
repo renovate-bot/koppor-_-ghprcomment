@@ -2,7 +2,7 @@
 
 //JAVA 21+
 
-//DEPS org.kohsuke:github-api:1.327
+//DEPS org.kohsuke:github-api:2.0-alpha-3
 //DEPS one.util:streamex:0.8.3
 //DEPS me.tongfei:progressbar:0.10.1
 //DEPS org.jline:jline-terminal:3.29.0
@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.jooq.lambda.Unchecked;
+import org.kohsuke.github.GHIssueComment;
 import org.kohsuke.github.GHPullRequest;
 import org.kohsuke.github.GHPullRequestReviewEvent;
 import org.kohsuke.github.GHRepository;
@@ -51,6 +52,8 @@ public class ghprcomment implements Callable<Integer> {
     private static final int GH_PR_COMMENT_YAML_NOT_FOUND = 2;
 
     private final String CONFIG_FILE_NAME = "ghprcomment";
+
+    private final String MAGIC_COMMENT = "<!-- created by ghprcomment -->";
 
     private final List<Path> SEARCH_PATHS = List.of(Path.of("."), Path.of(".github"));
 
@@ -93,6 +96,7 @@ public class ghprcomment implements Callable<Integer> {
             gitHubRepository = gitHub.getRepository(repository);
 
             // We fetch the pull request early to ensure that the number is valid
+            Logger.debug("Pull Request number: {}", pullRequestNumber);
             GHPullRequest pullRequest = gitHubRepository.getPullRequest(pullRequestNumber);
 
             GHWorkflowRun workflowRun = gitHubRepository.getWorkflowRun(workflowRunId);
@@ -101,16 +105,35 @@ public class ghprcomment implements Callable<Integer> {
                                                 .map(GHWorkflowJob::getName)
                                                 .collect(Collectors.toSet());
             Logger.debug("Failed jobs: {}", failedJobs);
-            Optional<FailureComment> commentToPost = getFailureComments(configPath.get()).stream()
-                                                                         .filter(fc -> failedJobs.contains(fc.jobName))
-                                                                         .findFirst();
+            List<FailureComment> failureComments = getFailureComments(configPath.get());
+            Optional<FailureComment> commentToPost = failureComments.stream()
+                                                                    .filter(fc -> failedJobs.contains(fc.jobName))
+                                                                    .findFirst();
             Logger.debug("Found comment: {}", commentToPost);
-            commentToPost.ifPresent(Unchecked.consumer(comment -> pullRequest.createReview().event(GHPullRequestReviewEvent.COMMENT).body(comment.message).create()));
+            if (commentToPost.isPresent()) {
+                postComment(commentToPost.get().message, pullRequest);
+            }
         } catch (IllegalArgumentException e) {
             Logger.error("Error in repository reference {}", repository);
             return REPOSITORY_REFERENCE_ERROR;
         }
         return 0;
+    }
+
+    private void postComment(String message, GHPullRequest pullRequest) throws Exception {
+        Logger.trace("message: {}", message);
+
+        pullRequest.getComments().forEach(Unchecked.consumer(comment -> {
+            String body = comment.getBody();
+            Logger.trace("Comment body: {}", body);
+            if (body.contains(MAGIC_COMMENT) || body.equals(message)) {
+                Logger.debug("Found a match - deleting {}", comment.getId());
+                comment.delete();
+            }
+        }));
+        String body = message + "\n\n" + MAGIC_COMMENT;
+        Logger.trace("Creating PR comment...", body);
+        pullRequest.comment(body);
     }
 
     private static List<FailureComment> getFailureComments(Path yamlFile) throws IOException {

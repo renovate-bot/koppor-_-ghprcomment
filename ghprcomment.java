@@ -99,6 +99,16 @@ public class ghprcomment implements Callable<Integer> {
             Logger.debug("Pull Request number: {}", pullRequestNumber);
             GHPullRequest pullRequest = gitHubRepository.getPullRequest(pullRequestNumber);
 
+            // Delete all previous comments
+            pullRequest.getComments().forEach(Unchecked.consumer(comment -> {
+                String body = comment.getBody();
+                Logger.trace("Comment body: {}", body);
+                if (body.contains(MAGIC_COMMENT)) {
+                    Logger.debug("Found a match - deleting {}", comment.getId());
+                    comment.delete();
+                }
+            }));
+
             GHWorkflowRun workflowRun = gitHubRepository.getWorkflowRun(workflowRunId);
             Set<String> failedJobs = workflowRun.listAllJobs().toList().stream()
                                                 .filter(job -> job.getConclusion() == GHWorkflowRun.Conclusion.FAILURE)
@@ -122,15 +132,6 @@ public class ghprcomment implements Callable<Integer> {
 
     private void postComment(String message, GHPullRequest pullRequest) throws Exception {
         Logger.trace("message: {}", message);
-
-        pullRequest.getComments().forEach(Unchecked.consumer(comment -> {
-            String body = comment.getBody();
-            Logger.trace("Comment body: {}", body);
-            if (body.contains(MAGIC_COMMENT) || body.equals(message)) {
-                Logger.debug("Found a match - deleting {}", comment.getId());
-                comment.delete();
-            }
-        }));
         String body = message + "\n\n" + MAGIC_COMMENT;
         Logger.trace("Creating PR comment...", body);
         pullRequest.comment(body);

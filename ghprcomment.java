@@ -110,6 +110,7 @@ public class ghprcomment implements Callable<Integer> {
             }));
 
             GHWorkflowRun workflowRun = gitHubRepository.getWorkflowRun(workflowRunId);
+            Logger.debug("workflowRunId: {}", workflowRunId);
             Set<String> failedJobs = workflowRun.listAllJobs().toList().stream()
                                                 .filter(job -> job.getConclusion() == GHWorkflowRun.Conclusion.FAILURE)
                                                 .map(GHWorkflowJob::getName)
@@ -147,7 +148,7 @@ public class ghprcomment implements Callable<Integer> {
         try (InputStream inputStream = Files.newInputStream(yamlFile)) {
             failureComments = yaml.load(inputStream);
         }
-        Logger.debug("failureComments {}", failureComments);
+        Logger.trace("failureComments {}", failureComments);
         List<FailureComment> result = failureComments.stream().map(map -> new FailureComment(map.get("jobName"), map.get("message"))).toList();
         Logger.debug("result {}", result);
         return result;

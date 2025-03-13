@@ -150,7 +150,7 @@ public class ghprcomment implements Callable<Integer> {
         }
         Logger.trace("failureComments {}", failureComments);
         List<FailureComment> result = failureComments.stream().map(map -> new FailureComment(map.get("jobName"), map.get("message"))).toList();
-        Logger.debug("result {}", result);
+        Logger.trace("result {}", result);
         return result;
     }
 

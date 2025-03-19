@@ -137,3 +137,8 @@ Example:
 ```terminal
 Usage: jbang gcl@koppor/ghprcomment --repository JabRef/jabref --workflow-run-id 123456789 --pr-number 1234
 ```
+
+## Related actions
+
+- [Action Comment Pull Request](https://github.com/thollander/actions-comment-pull-request) offers directly commenting on a pull request.
+- [Action Comment Progress](https://github.com/hasura/comment-progress)  offers directly commenting on a pull request.

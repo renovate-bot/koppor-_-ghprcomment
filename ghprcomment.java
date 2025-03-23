@@ -24,13 +24,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.jooq.lambda.Unchecked;
-import org.kohsuke.github.GHIssueComment;
 import org.kohsuke.github.GHPullRequest;
-import org.kohsuke.github.GHPullRequestReviewEvent;
 import org.kohsuke.github.GHRepository;
 import org.kohsuke.github.GHWorkflowJob;
 import org.kohsuke.github.GHWorkflowRun;
@@ -54,6 +54,8 @@ public class ghprcomment implements Callable<Integer> {
     private final String CONFIG_FILE_NAME = "ghprcomment";
 
     private final String MAGIC_COMMENT = "<!-- created by ghprcomment -->";
+
+    private final Pattern MAGIC_COMMENT_V2 = Pattern.compile("<!-- ghprcomment (\\S+) -->");
 
     private final List<Path> SEARCH_PATHS = List.of(Path.of("."), Path.of(".github"));
 
@@ -99,16 +101,6 @@ public class ghprcomment implements Callable<Integer> {
             Logger.debug("Pull Request number: {}", pullRequestNumber);
             GHPullRequest pullRequest = gitHubRepository.getPullRequest(pullRequestNumber);
 
-            // Delete all previous comments
-            pullRequest.getComments().forEach(Unchecked.consumer(comment -> {
-                String body = comment.getBody();
-                Logger.trace("Comment body: {}", body);
-                if (body.contains(MAGIC_COMMENT)) {
-                    Logger.debug("Found a match - deleting {}", comment.getId());
-                    comment.delete();
-                }
-            }));
-
             GHWorkflowRun workflowRun = gitHubRepository.getWorkflowRun(workflowRunId);
             Logger.debug("workflowRunId: {}", workflowRunId);
             Set<String> failedJobs = workflowRun.listAllJobs().toList().stream()
@@ -116,14 +108,38 @@ public class ghprcomment implements Callable<Integer> {
                                                 .map(GHWorkflowJob::getName)
                                                 .collect(Collectors.toSet());
             Logger.debug("Failed jobs: {}", failedJobs);
+
+            // Delete all previous comments
+            pullRequest.getComments().forEach(Unchecked.consumer(comment -> {
+                String body = comment.getBody();
+                Logger.trace("Comment body: {}", body);
+
+                if (body.contains(MAGIC_COMMENT)) {
+                    Logger.debug("Found V1 match - deleting {}", comment.getId());
+                    comment.delete();
+                } else {
+                    Matcher matcher = MAGIC_COMMENT_V2.matcher(body);
+                    if (matcher.find()) {
+                        String jobName = matcher.group(1);
+                        Logger.debug("Found a match of job {}", jobName);
+                        if (failedJobs.contains(jobName)) {
+                            Logger.debug("Still fails - not deleting");
+                        } else {
+                            Logger.debug("Found a match - deleting {}", comment.getId());
+                            comment.delete();
+                        }
+                    }
+                }
+            }));
+
             List<FailureComment> failureComments = getFailureComments(configPath.get());
             Optional<FailureComment> commentToPost = failureComments.stream()
                                                                     .filter(fc -> failedJobs.contains(fc.jobName))
                                                                     .findFirst();
             Logger.debug("Found comment: {}", commentToPost);
-            if (commentToPost.isPresent()) {
-                postComment(commentToPost.get().message, pullRequest);
-            }
+            commentToPost.ifPresent(Unchecked.consumer(fc ->
+                postComment(fc.message, fc.jobName, pullRequest)
+            ));
         } catch (IllegalArgumentException e) {
             Logger.error("Error in repository reference {}", repository);
             return REPOSITORY_REFERENCE_ERROR;
@@ -131,9 +147,9 @@ public class ghprcomment implements Callable<Integer> {
         return 0;
     }
 
-    private void postComment(String message, GHPullRequest pullRequest) throws Exception {
+    private void postComment(String message, String jobName, GHPullRequest pullRequest) throws Exception {
         Logger.trace("message: {}", message);
-        String body = message + "\n\n" + MAGIC_COMMENT;
+        String body = message + "\n\n" + "<!-- ghprcomment " + jobName + " -->";
         Logger.trace("Creating PR comment...", body);
         pullRequest.comment(body);
     }

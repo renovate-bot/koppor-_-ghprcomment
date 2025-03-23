@@ -19,9 +19,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.SequencedCollection;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.regex.Matcher;
@@ -63,17 +67,17 @@ public class ghprcomment implements Callable<Integer> {
                                                         .flatMap(path -> Stream.of(path.resolve(CONFIG_FILE_NAME + ".yaml"), path.resolve(CONFIG_FILE_NAME + ".yml")))
                                                         .toList();
 
-    @Option(names = { "-r", "--repository" }, description = "The GitHub repository in the form owner/repository. E.g., JabRef/jabref", required = true)
+    @Option(names = {"-r", "--repository"}, description = "The GitHub repository in the form owner/repository. E.g., JabRef/jabref", required = true)
     private String repository;
 
-    @Option(names = { "-w", "--workflow-run-id" }, required = true)
+    @Option(names = {"-w", "--workflow-run-id"}, required = true)
     private Long workflowRunId;
 
     // PR_NUMBER: ${{ github.event.number }}
-    @Option(names = { "-p", "--pr-number" }, required = true)
+    @Option(names = {"-p", "--pr-number"}, required = true)
     private Integer pullRequestNumber;
 
-    public static void main(String... args)  {
+    public static void main(String... args) {
         CommandLine commandLine = new CommandLine(new ghprcomment());
         commandLine.parseArgs(args);
         int exitCode = commandLine.execute(args);
@@ -83,8 +87,8 @@ public class ghprcomment implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         Optional<Path> configPath = CONFIG_PATHS.stream()
-                                           .filter(Files::exists)
-                                           .findFirst();
+                                                .filter(Files::exists)
+                                                .findFirst();
         if (configPath.isEmpty()) {
             Logger.error("{} not found. Searched at {}.", CONFIG_FILE_NAME, CONFIG_PATHS);
             return GH_PR_COMMENT_YAML_NOT_FOUND;
@@ -110,6 +114,8 @@ public class ghprcomment implements Callable<Integer> {
             Logger.debug("Failed jobs: {}", failedJobs);
 
             // Delete all previous comments
+            // And collect all already posted comments
+            Set<String> commentedFailedJobs = new HashSet<>();
             pullRequest.getComments().forEach(Unchecked.consumer(comment -> {
                 String body = comment.getBody();
                 Logger.trace("Comment body: {}", body);
@@ -124,6 +130,7 @@ public class ghprcomment implements Callable<Integer> {
                         Logger.debug("Found a match of job {}", jobName);
                         if (failedJobs.contains(jobName)) {
                             Logger.debug("Still fails - not deleting");
+                            commentedFailedJobs.add(jobName);
                         } else {
                             Logger.debug("Found a match - deleting {}", comment.getId());
                             comment.delete();
@@ -137,9 +144,24 @@ public class ghprcomment implements Callable<Integer> {
                                                                     .filter(fc -> failedJobs.contains(fc.jobName))
                                                                     .findFirst();
             Logger.debug("Found comment: {}", commentToPost);
-            commentToPost.ifPresent(Unchecked.consumer(fc ->
-                postComment(fc.message, fc.jobName, pullRequest)
-            ));
+
+            SequencedCollection<FailureComment> commentsToPost = new LinkedHashSet<>();
+            commentToPost.ifPresent(commentsToPost::add);
+
+            // Add all "failed" always comments
+            failureComments.stream()
+                           .filter(fc -> fc.always)
+                           .filter(fc -> failedJobs.contains(fc.jobName))
+                           .forEach(commentsToPost::add);
+
+            commentsToPost.forEach(Unchecked.consumer(fc -> {
+                if (!commentedFailedJobs.equals(fc.jobName)) {
+                    // Post only if comment not already posted
+                    postComment(fc.message, fc.jobName, pullRequest);
+                } else {
+                    Logger.debug("Comment already posted for job {}", fc.jobName);
+                }
+            }));
         } catch (IllegalArgumentException e) {
             Logger.error("Error in repository reference {}", repository);
             return REPOSITORY_REFERENCE_ERROR;
@@ -165,10 +187,14 @@ public class ghprcomment implements Callable<Integer> {
             failureComments = yaml.load(inputStream);
         }
         Logger.trace("failureComments {}", failureComments);
-        List<FailureComment> result = failureComments.stream().map(map -> new FailureComment(map.get("jobName"), map.get("message"))).toList();
+        List<FailureComment> result = failureComments.stream().map(map -> new FailureComment(map.get("jobName"), map.get("message"), "true".equals(map.get("always")))).toList();
         Logger.trace("result {}", result);
         return result;
     }
 
-    record FailureComment(String jobName, String message) {}
+    record FailureComment(
+            String jobName,
+            String message,
+            boolean always) {
+    }
 }

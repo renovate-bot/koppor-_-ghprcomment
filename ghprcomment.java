@@ -61,6 +61,10 @@ public class ghprcomment implements Callable<Integer> {
 
     private final Pattern MAGIC_COMMENT_V2 = Pattern.compile("<!-- ghprcomment (\\S+) -->");
 
+    private final Pattern MAGIC_COMMENT_V3 = Pattern.compile(
+            "<!-- ghprcomment\\n(?<workflowName>.+?)\\n(?<jobName>.+?)\\n-->"
+    );
+
     private final List<Path> SEARCH_PATHS = List.of(Path.of("."), Path.of(".github"));
 
     private final List<Path> CONFIG_PATHS = SEARCH_PATHS.stream()
@@ -106,12 +110,18 @@ public class ghprcomment implements Callable<Integer> {
             GHPullRequest pullRequest = gitHubRepository.getPullRequest(pullRequestNumber);
 
             GHWorkflowRun workflowRun = gitHubRepository.getWorkflowRun(workflowRunId);
-            Logger.debug("workflowRunId: {}", workflowRunId);
+            String runWorkflowName = workflowRun.getName();
+            Logger.debug("workflowRunId: {} ({})", workflowRunId, runWorkflowName);
             Set<String> failedJobs = workflowRun.listAllJobs().toList().stream()
                                                 .filter(job -> job.getConclusion() == GHWorkflowRun.Conclusion.FAILURE)
                                                 .map(GHWorkflowJob::getName)
                                                 .collect(Collectors.toSet());
             Logger.debug("Failed jobs: {}", failedJobs);
+
+            if (failedJobs.isEmpty()) {
+                Logger.info("No failed jobs found. Exiting.");
+                return 0;
+            }
 
             // Delete all previous comments
             // And collect all already posted comments
@@ -120,16 +130,22 @@ public class ghprcomment implements Callable<Integer> {
                 String body = comment.getBody();
                 Logger.trace("Comment body: {}", body);
 
+                Matcher matcherV2 = MAGIC_COMMENT_V2.matcher(body);
+                Matcher matcherV3 = MAGIC_COMMENT_V3.matcher(body);
+
                 if (body.contains(MAGIC_COMMENT)) {
                     Logger.debug("Found V1 match - deleting {}", comment.getId());
                     comment.delete();
-                } else {
-                    Matcher matcher = MAGIC_COMMENT_V2.matcher(body);
-                    if (matcher.find()) {
-                        String jobName = matcher.group(1);
-                        Logger.debug("Found a match of job {}", jobName);
+                } else if (matcherV2.find()) {
+                    Logger.debug("Found V1 match - deleting {}", comment.getId());
+                    comment.delete();
+                } else if (matcherV3.find()) {
+                    String workflowName = matcherV3.group("workflowName");
+                    if (runWorkflowName.equals(workflowName)) {
+                        String jobName = matcherV3.group("jobName");
+                        Logger.debug("Found a match of workflow {} / job {}", workflowName, jobName);
                         if (failedJobs.contains(jobName)) {
-                            Logger.debug("Still fails - not deleting");
+                            Logger.debug("{} still fails - not deleting", jobName);
                             commentedFailedJobs.add(jobName);
                         } else {
                             Logger.debug("Found a match - deleting {}", comment.getId());
@@ -138,14 +154,16 @@ public class ghprcomment implements Callable<Integer> {
                     }
                 }
             }));
+            Logger.debug("Commented failed jobs: {}", commentedFailedJobs);
+
+            SequencedCollection<FailureComment> commentsToPost = new LinkedHashSet<>();
 
             List<FailureComment> failureComments = getFailureComments(configPath.get());
+            Logger.trace("Failure comments: {}", failureComments);
             Optional<FailureComment> commentToPost = failureComments.stream()
                                                                     .filter(fc -> failedJobs.contains(fc.jobName))
                                                                     .findFirst();
-            Logger.debug("Found comment: {}", commentToPost);
-
-            SequencedCollection<FailureComment> commentsToPost = new LinkedHashSet<>();
+            Logger.trace("Found comment: {}", commentToPost);
             commentToPost.ifPresent(commentsToPost::add);
 
             // Add all "failed" always comments
@@ -155,9 +173,9 @@ public class ghprcomment implements Callable<Integer> {
                            .forEach(commentsToPost::add);
 
             commentsToPost.forEach(Unchecked.consumer(fc -> {
-                if (!commentedFailedJobs.equals(fc.jobName)) {
+                if (!commentedFailedJobs.contains(fc.jobName)) {
                     // Post only if comment not already posted
-                    postComment(fc.message, fc.jobName, pullRequest);
+                    postComment(fc.message, runWorkflowName, fc.jobName, pullRequest);
                 } else {
                     Logger.debug("Comment already posted for job {}", fc.jobName);
                 }
@@ -169,10 +187,10 @@ public class ghprcomment implements Callable<Integer> {
         return 0;
     }
 
-    private void postComment(String message, String jobName, GHPullRequest pullRequest) throws Exception {
+    private void postComment(String message, String workflowName, String jobName, GHPullRequest pullRequest) throws Exception {
         Logger.trace("message: {}", message);
-        String body = message + "\n\n" + "<!-- ghprcomment " + jobName + " -->";
-        Logger.trace("Creating PR comment...", body);
+        String body = String.format("%s\n\n<!-- ghprcomment\n%s\n%s\n-->", message, workflowName, jobName);
+        Logger.debug("Creating PR comment...", body);
         pullRequest.comment(body);
     }
 

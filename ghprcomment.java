@@ -188,9 +188,17 @@ public class ghprcomment implements Callable<Integer> {
     }
 
     private void postComment(String message, String workflowName, String jobName, GHPullRequest pullRequest) throws Exception {
+        Logger.debug("workflowName: {}, jobName: {}", workflowName, jobName);
+
+        if (message == null) {
+            Logger.error("Skipping empty message");
+            return;
+        }
         Logger.trace("message: {}", message);
+
         String body = String.format("%s\n\n<!-- ghprcomment\n%s\n%s\n-->", message, workflowName, jobName);
-        Logger.debug("Creating PR comment {}...", body);
+
+        Logger.trace("Creating PR comment {}...", body);
         pullRequest.comment(body);
     }
 

@@ -125,7 +125,7 @@ public class ghprcomment implements Callable<Integer> {
 
             List<FailureComment> failureComments = getFailureComments(configPath.get());
             Logger.debug("# failure comments: {}", failureComments.size());
-            Logger.trace("Failure comments: {}", failureComments);
+            Logger.debug("Failure comments: {}", failureComments);
             Optional<FailureComment> commentToPost = failureComments.stream()
                                                                     .filter(fc -> failedJobs.contains(fc.jobName))
                                                                     .findFirst();
@@ -182,6 +182,8 @@ public class ghprcomment implements Callable<Integer> {
                            .filter(fc -> fc.always)
                            .filter(fc -> failedJobs.contains(fc.jobName))
                            .forEach(commentsToPost::add);
+
+            commentToPost.ifPresent(fc -> Logger.debug("All comment to post: {}", commentsToPost));
 
             commentsToPost.forEach(Unchecked.consumer(fc -> {
                 if (!commentedFailedJobs.contains(fc.jobName)) {

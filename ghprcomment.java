@@ -175,6 +175,7 @@ public class ghprcomment implements Callable<Integer> {
 
             SequencedCollection<FailureComment> commentsToPost = new LinkedHashSet<>();
             commentToPost.ifPresent(commentsToPost::add);
+            commentToPost.ifPresent(fc -> Logger.debug("Comment to post: {}", fc));
 
             // Add all "failed" always comments
             failureComments.stream()

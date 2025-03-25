@@ -106,17 +106,17 @@ public class ghprcomment implements Callable<Integer> {
             gitHubRepository = gitHub.getRepository(repository);
 
             // We fetch the pull request early to ensure that the number is valid
-            Logger.debug("Pull Request number: {}", pullRequestNumber);
+            Logger.info("Pull Request number: {}", pullRequestNumber);
             GHPullRequest pullRequest = gitHubRepository.getPullRequest(pullRequestNumber);
 
             GHWorkflowRun workflowRun = gitHubRepository.getWorkflowRun(workflowRunId);
             String runWorkflowName = workflowRun.getName();
-            Logger.debug("workflowRunId: {} ({})", workflowRunId, runWorkflowName);
+            Logger.info("workflowRunId: {} ({})", workflowRunId, runWorkflowName);
             Set<String> failedJobs = workflowRun.listAllJobs().toList().stream()
                                                 .filter(job -> job.getConclusion() == GHWorkflowRun.Conclusion.FAILURE)
                                                 .map(GHWorkflowJob::getName)
                                                 .collect(Collectors.toSet());
-            Logger.debug("Failed jobs: {}", failedJobs);
+            Logger.info("Failed jobs: {}", failedJobs);
 
             if (failedJobs.isEmpty()) {
                 Logger.info("No failed jobs found. Exiting.");
@@ -175,7 +175,7 @@ public class ghprcomment implements Callable<Integer> {
 
             SequencedCollection<FailureComment> commentsToPost = new LinkedHashSet<>();
             commentToPost.ifPresent(commentsToPost::add);
-            commentToPost.ifPresent(fc -> Logger.debug("Comment to post: {}", fc));
+            commentToPost.ifPresent(fc -> Logger.debug("Comment to post for failed job: {}", fc.jobName));
 
             // Add all "failed" always comments
             failureComments.stream()
@@ -183,12 +183,11 @@ public class ghprcomment implements Callable<Integer> {
                            .filter(fc -> failedJobs.contains(fc.jobName))
                            .forEach(commentsToPost::add);
 
-            commentToPost.ifPresent(fc -> Logger.debug("All comment to post: {}", commentsToPost));
-
             commentsToPost.forEach(Unchecked.consumer(fc -> {
                 if (!commentedFailedJobs.contains(fc.jobName)) {
                     // Post only if comment not already posted
                     postComment(fc.message, runWorkflowName, fc.jobName, pullRequest);
+                    Logger.info("Posting comment for failed job {}", fc.jobName);
                 } else {
                     Logger.debug("Comment already posted for job {}", fc.jobName);
                 }
@@ -225,9 +224,21 @@ public class ghprcomment implements Callable<Integer> {
         try (InputStream inputStream = Files.newInputStream(yamlFile)) {
             failureComments = yaml.load(inputStream);
         }
-        Logger.debug("failureComments {}", failureComments);
-        Logger.debug("always entry of last entry {}", failureComments.getLast().get("always"));
-        List<FailureComment> result = failureComments.stream().map(map -> new FailureComment(map.get("jobName"), map.get("message"), "true".equals(map.get("always")))).toList();
+        Logger.trace("failureComments {}", failureComments);
+        List<FailureComment> result = failureComments.stream().map(map -> {
+            boolean alwaysValue = false;
+            Object always = map.get("always");
+            if (always == null) {
+                alwaysValue = false;
+            } else if (always instanceof Boolean theValue) {
+                alwaysValue = theValue;
+            } else if (always instanceof String theValue) {
+                alwaysValue = Boolean.parseBoolean(theValue);
+            } else {
+                Logger.error("Unknown always value: {}", always);
+            }
+            return new FailureComment(map.get("jobName"), map.get("message"), alwaysValue);
+        }).toList();
         Logger.trace("result {}", result);
         return result;
     }

@@ -123,6 +123,14 @@ public class ghprcomment implements Callable<Integer> {
                 return 0;
             }
 
+            List<FailureComment> failureComments = getFailureComments(configPath.get());
+            Logger.debug("# failure comments: {}", failureComments.size());
+            Logger.trace("Failure comments: {}", failureComments);
+            Optional<FailureComment> commentToPost = failureComments.stream()
+                                                                    .filter(fc -> failedJobs.contains(fc.jobName))
+                                                                    .findFirst();
+            Logger.trace("Found comment: {}", commentToPost);
+
             // Delete all previous comments
             // And collect all already posted comments
             Set<String> commentedFailedJobs = new HashSet<>();
@@ -145,10 +153,19 @@ public class ghprcomment implements Callable<Integer> {
                         String jobName = matcherV3.group("jobName");
                         Logger.debug("Found a match of workflow {} / job {}", workflowName, jobName);
                         if (failedJobs.contains(jobName)) {
-                            Logger.debug("{} still fails - not deleting", jobName);
-                            commentedFailedJobs.add(jobName);
+                            Logger.debug("{} still fails");
+                            boolean isCommentToPost = commentToPost.map(FailureComment::jobName)
+                                                                   .filter(jobName::equals)
+                                                                   .isPresent();
+                            if (isCommentToPost) {
+                                Logger.debug("Comment to post - deleting (to enable repost later)");
+                                comment.delete();
+                            } else {
+                                Logger.debug("Comment already posted - skipping");
+                                commentedFailedJobs.add(jobName);
+                            }
                         } else {
-                            Logger.debug("Found a match - deleting {}", comment.getId());
+                            Logger.debug("Found a match - job not failing any more - deleting {}", comment.getId());
                             comment.delete();
                         }
                     }
@@ -157,13 +174,6 @@ public class ghprcomment implements Callable<Integer> {
             Logger.debug("Commented failed jobs: {}", commentedFailedJobs);
 
             SequencedCollection<FailureComment> commentsToPost = new LinkedHashSet<>();
-
-            List<FailureComment> failureComments = getFailureComments(configPath.get());
-            Logger.trace("Failure comments: {}", failureComments);
-            Optional<FailureComment> commentToPost = failureComments.stream()
-                                                                    .filter(fc -> failedJobs.contains(fc.jobName))
-                                                                    .findFirst();
-            Logger.trace("Found comment: {}", commentToPost);
             commentToPost.ifPresent(commentsToPost::add);
 
             // Add all "failed" always comments

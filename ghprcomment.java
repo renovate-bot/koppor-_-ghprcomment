@@ -125,7 +125,7 @@ public class ghprcomment implements Callable<Integer> {
 
             List<FailureComment> failureComments = getFailureComments(configPath.get());
             Logger.debug("# failure comments: {}", failureComments.size());
-            Logger.debug("Failure comments: {}", failureComments);
+            Logger.trace("Failure comments: {}", failureComments);
             Optional<FailureComment> commentToPost = failureComments.stream()
                                                                     .filter(fc -> failedJobs.contains(fc.jobName))
                                                                     .findFirst();
@@ -153,7 +153,7 @@ public class ghprcomment implements Callable<Integer> {
                         String jobName = matcherV3.group("jobName");
                         Logger.debug("Found a match of workflow {} / job {}", workflowName, jobName);
                         if (failedJobs.contains(jobName)) {
-                            Logger.debug("{} still fails");
+                            Logger.debug("{} still fails", jobName);
                             boolean isCommentToPost = commentToPost.map(FailureComment::jobName)
                                                                    .filter(jobName::equals)
                                                                    .isPresent();
@@ -225,7 +225,8 @@ public class ghprcomment implements Callable<Integer> {
         try (InputStream inputStream = Files.newInputStream(yamlFile)) {
             failureComments = yaml.load(inputStream);
         }
-        Logger.trace("failureComments {}", failureComments);
+        Logger.debug("failureComments {}", failureComments);
+        Logger.debug("always entry of last entry {}", failureComments.getLast().get("always"));
         List<FailureComment> result = failureComments.stream().map(map -> new FailureComment(map.get("jobName"), map.get("message"), "true".equals(map.get("always")))).toList();
         Logger.trace("result {}", result);
         return result;

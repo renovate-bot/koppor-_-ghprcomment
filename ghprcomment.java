@@ -118,11 +118,6 @@ public class ghprcomment implements Callable<Integer> {
                                                 .collect(Collectors.toSet());
             Logger.info("Failed jobs: {}", failedJobs);
 
-            if (failedJobs.isEmpty()) {
-                Logger.info("No failed jobs found. Exiting.");
-                return 0;
-            }
-
             List<FailureComment> failureComments = getFailureComments(configPath.get());
             Logger.debug("# failure comments: {}", failureComments.size());
             Logger.trace("Failure comments: {}", failureComments);
@@ -172,6 +167,12 @@ public class ghprcomment implements Callable<Integer> {
                 }
             }));
             Logger.debug("Commented failed jobs: {}", commentedFailedJobs);
+
+            if (failedJobs.isEmpty()) {
+                // Do nothing if all previous comments have been deleted - and no new comments need to be posted
+                Logger.info("No failed jobs found. Exiting.");
+                return 0;
+            }
 
             SequencedCollection<FailureComment> commentsToPost = new LinkedHashSet<>();
             commentToPost.ifPresent(commentsToPost::add);

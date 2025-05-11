@@ -120,6 +120,11 @@ public class ghprcomment implements Callable<Integer> {
 
             List<FailureComment> failureComments = getFailureComments(configPath.get());
             Logger.debug("# failure comments: {}", failureComments.size());
+            Logger.debug("Failure comments: {}", 
+                failureComments.stream()
+                    .map(fc -> fc.jobName)
+                    .collect(Collectors.joining(", "))
+            );
             Logger.trace("Failure comments: {}", failureComments);
             Optional<FailureComment> commentToPost = failureComments.stream()
                                                                     .filter(fc -> failedJobs.contains(fc.jobName))

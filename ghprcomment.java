@@ -126,10 +126,11 @@ public class ghprcomment implements Callable<Integer> {
                     .collect(Collectors.joining(", "))
             );
             Logger.trace("Failure comments: {}", failureComments);
+
             Optional<FailureComment> commentToPost = failureComments.stream()
                                                                     .filter(fc -> failedJobs.contains(fc.jobName))
                                                                     .findFirst();
-            Logger.trace("Found comment: {}", commentToPost);
+            Logger.debug("Found comment: {}", commentToPost);
 
             // Delete all previous comments
             // And collect all already posted comments
@@ -151,9 +152,9 @@ public class ghprcomment implements Callable<Integer> {
                     String workflowName = matcherV3.group("workflowName");
                     if (runWorkflowName.equals(workflowName)) {
                         String jobName = matcherV3.group("jobName");
-                        Logger.debug("Found a match of workflow {} / job {}", workflowName, jobName);
+                        Logger.debug("Found a match of workflow '{}' / job '{}'", workflowName, jobName);
                         if (failedJobs.contains(jobName)) {
-                            Logger.debug("{} still fails", jobName);
+                            Logger.debug("Still fails: {}", jobName);
                             boolean isCommentToPost = commentToPost.map(FailureComment::jobName)
                                                                    .filter(jobName::equals)
                                                                    .isPresent();
@@ -161,7 +162,7 @@ public class ghprcomment implements Callable<Integer> {
                                 Logger.debug("Comment to post - deleting (to enable repost later)");
                                 comment.delete();
                             } else {
-                                Logger.debug("Comment already posted - skipping");
+                                Logger.debug("Comment already posted; and not most important to comment - keeping comment as is");
                                 commentedFailedJobs.add(jobName);
                             }
                         } else {

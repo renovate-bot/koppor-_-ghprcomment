@@ -6,7 +6,7 @@
 //DEPS one.util:streamex:0.8.3
 //DEPS me.tongfei:progressbar:0.10.1
 //DEPS org.jline:jline-terminal:3.30.4
-//DEPS org.eclipse.collections:eclipse-collections:11.1.0
+//DEPS org.eclipse.collections:eclipse-collections:12.0.0
 //DEPS info.picocli:picocli:4.7.7
 //DEPS org.yaml:snakeyaml:2.4
 //DEPS org.jooq:jool:0.9.15

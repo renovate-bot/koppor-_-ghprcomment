@@ -118,7 +118,7 @@ public class ghprcomment implements Callable<Integer> {
                                                 .collect(Collectors.toSet());
             Logger.info("Failed jobs: {}", failedJobs);
 
-            List<FailureComment> failureComments = getFailureComments(configPath.get());
+            List<FailureComment> failureComments = getFailureComments(configPath.get(), runWorkflowName);
             Logger.debug("# failure comments: {}", failureComments.size());
             Logger.debug("Failure comments: {}", 
                 failureComments.stream()
@@ -221,7 +221,7 @@ public class ghprcomment implements Callable<Integer> {
         pullRequest.comment(body);
     }
 
-    private static List<FailureComment> getFailureComments(Path yamlFile) throws IOException {
+    private static List<FailureComment> getFailureComments(Path yamlFile, String workflowName) throws IOException {
         LoaderOptions options = new LoaderOptions();
         Yaml yaml = new Yaml(options);
 
@@ -232,20 +232,26 @@ public class ghprcomment implements Callable<Integer> {
             failureComments = yaml.load(inputStream);
         }
         Logger.trace("failureComments {}", failureComments);
-        List<FailureComment> result = failureComments.stream().map(map -> {
-            boolean alwaysValue = false;
-            Object always = map.get("always");
-            if (always == null) {
-                alwaysValue = false;
-            } else if (always instanceof Boolean theValue) {
-                alwaysValue = theValue;
-            } else if (always instanceof String theValue) {
-                alwaysValue = Boolean.parseBoolean(theValue);
-            } else {
-                Logger.error("Unknown always value: {}", always);
-            }
-            return new FailureComment(map.get("jobName"), map.get("message"), alwaysValue);
-        }).toList();
+        List<FailureComment> result = failureComments
+                .stream()
+                .filter(comment -> {
+                    String jobsWorkflow = comment.get("workflowName");
+                    return jobsWorkflow == null || workflowName.equals(jobsWorkflow);
+                })
+                .map(map -> {
+                    boolean alwaysValue = false;
+                    Object always = map.get("always");
+                    if (always == null) {
+                        alwaysValue = false;
+                    } else if (always instanceof Boolean theValue) {
+                        alwaysValue = theValue;
+                    } else if (always instanceof String theValue) {
+                        alwaysValue = Boolean.parseBoolean(theValue);
+                    } else {
+                        Logger.error("Unknown always value: {}", always);
+                    }
+                    return new FailureComment(map.get("jobName"), map.get("message"), alwaysValue);
+                }).toList();
         Logger.trace("result {}", result);
         return result;
     }

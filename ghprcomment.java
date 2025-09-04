@@ -2,7 +2,7 @@
 
 //JAVA 21+
 
-//DEPS org.kohsuke:github-api:2.0-rc.4
+//DEPS org.kohsuke:github-api:2.0-rc.5
 //DEPS one.util:streamex:0.8.4
 //DEPS me.tongfei:progressbar:0.10.1
 //DEPS org.jline:jline-terminal:3.30.5

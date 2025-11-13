@@ -11,7 +11,7 @@ The `ghprcomment.yml` provides a list of jobs and the respective message to be p
 The job names are ordered by priority.
 The first job that failed is used to determine the message to post.
 
-Exmple:
+Example:
 
 ```yaml
 - jobName: job1

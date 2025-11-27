@@ -190,6 +190,14 @@ public class ghprcomment implements Callable<Integer> {
                            .filter(fc -> failedJobs.contains(fc.jobName))
                            .forEach(commentsToPost::add);
 
+            getLabel(configPath.get()).ifPresent(Unchecked.consumer(label -> {
+                if (!commentsToPost.isEmpty()) {
+                    pullRequest.addLabels(label);
+                } else {
+                    pullRequest.removeLabel(label);
+                }
+            }));
+
             commentsToPost.forEach(Unchecked.consumer(fc -> {
                 if (!commentedFailedJobs.contains(fc.jobName)) {
                     // Post only if comment not already posted
@@ -221,6 +229,20 @@ public class ghprcomment implements Callable<Integer> {
         pullRequest.comment(body);
     }
 
+    private Optional<String> getLabel(Path yamlFile) throws IOException {
+        LoaderOptions options = new LoaderOptions();
+        Yaml yaml = new Yaml(options);
+        List<Map<String, String>> failureComments;
+        try (InputStream inputStream = Files.newInputStream(yamlFile)) {
+            failureComments = yaml.load(inputStream);
+        }
+        return failureComments
+                .stream()
+                .filter(comment -> comment.get("label") != null)
+                .map(comment -> comment.get("label"))
+                .findAny();
+    }
+
     private static List<FailureComment> getFailureComments(Path yamlFile, String workflowName) throws IOException {
         LoaderOptions options = new LoaderOptions();
         Yaml yaml = new Yaml(options);
@@ -234,6 +256,7 @@ public class ghprcomment implements Callable<Integer> {
         Logger.trace("failureComments {}", failureComments);
         List<FailureComment> result = failureComments
                 .stream()
+                .filter(comment -> comment.get("jobName") != null)
                 .filter(comment -> {
                     String jobsWorkflow = comment.get("workflowName");
                     return jobsWorkflow == null || workflowName.equals(jobsWorkflow);

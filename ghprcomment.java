@@ -190,11 +190,15 @@ public class ghprcomment implements Callable<Integer> {
                            .filter(fc -> failedJobs.contains(fc.jobName))
                            .forEach(commentsToPost::add);
 
-            getLabel(configPath.get()).ifPresent(Unchecked.consumer(label -> {
-                if (!commentsToPost.isEmpty()) {
-                    pullRequest.addLabels(label);
-                } else {
+            Optional<String> theLabel = getLabel(configPath.get());
+            Logger.debug("Label found", theLabel);
+            theLabel.ifPresent(Unchecked.consumer(label -> {
+                if (commentsToPost.isEmpty()) {
+                    Logger.debug("Removing label.");
                     pullRequest.removeLabel(label);
+                } else {
+                    Logger.debug("Adding label.");
+                    pullRequest.addLabels(label);
                 }
             }));
 
